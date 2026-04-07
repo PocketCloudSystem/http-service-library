@@ -2,21 +2,22 @@
 
 namespace r3pt1s\httpserver\route;
 
-use r3pt1s\httpserver\io\Request;
+use r3pt1s\httpserver\io\RequestContext;
 use r3pt1s\httpserver\io\Response;
 use r3pt1s\httpserver\io\ResponseBuilder;
 use r3pt1s\httpserver\socket\auth\Authentication;
+use r3pt1s\httpserver\util\RequestMethod;
 use r3pt1s\httpserver\util\StatusCode;
 
 abstract class RegularPath implements Path {
 
     public function __construct(
         private readonly string $path,
-        private readonly string $requestMethod,
+        private readonly RequestMethod $requestMethod,
         private readonly Authentication $authentication
     ) {}
 
-    public function handleFailedAuth(Request $request): Response {
+    public function handleFailedAuth(RequestContext $request): Response {
         return ResponseBuilder::create()
             ->code(StatusCode::FORBIDDEN)
             ->build();
@@ -34,7 +35,7 @@ abstract class RegularPath implements Path {
         return "/" . trim($this->getPath(), "/");
     }
 
-    public function getMethod(): string {
+    public function getMethod():  RequestMethod {
         return $this->requestMethod;
     }
 

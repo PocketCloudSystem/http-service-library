@@ -3,11 +3,11 @@
 namespace r3pt1s\httpserver\util;
 
 use r3pt1s\httpserver\HttpServer;
-use r3pt1s\httpserver\io\Request;
+use r3pt1s\httpserver\io\RequestContext;
 
 final class Utils {
 
-    public static function parseHttpRequest(Address $address, string $buffer): StatusCode|Request {
+    public static function parseHttpRequest(HttpServer $server, Address $address, string $buffer): StatusCode|RequestContext {
         if (strlen($buffer) > HttpConstants::MAX_REQUEST_SIZE) return StatusCode::PAYLOAD_TOO_LARGE;
 
         $lines = explode("\r\n", $buffer);
@@ -19,7 +19,7 @@ final class Utils {
 
         [$method, $fullPath, $protocol] = $parts;
 
-        if (!in_array($method, HttpConstants::SUPPORTED_REQUEST_METHODS, true)) return StatusCode::METHOD_NOT_ALLOWED;
+        if (($method = RequestMethod::fromName($method)) === null) return StatusCode::METHOD_NOT_ALLOWED;
         if (!preg_match("/^HTTP\/1\.[01]$/", $protocol)) return StatusCode::HTTP_VERSION_NOT_SUPPORTED;
 
         $fullPath = "/" . trim($fullPath, "/");
@@ -78,9 +78,9 @@ final class Utils {
             }
         }
 
-        $path = HttpServer::getInstance()->getPath($method, $path);
+        $path = $server->getPath($method, $path);
         if ($path === null) return StatusCode::NOT_FOUND;
-        return new Request($address, $method, $path, $queryParams, $headers, $body);
+        return new RequestContext($address, $method, $path, $queryParams, $headers, $body);
     }
 
     public static function encodeHeaders(array $headers): array {

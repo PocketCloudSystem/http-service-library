@@ -3,7 +3,6 @@
 namespace r3pt1s\httpserver\io;
 
 use GdImage;
-use pmmp\thread\ThreadSafeArray;
 use r3pt1s\httpserver\util\StatusCode;
 
 final class ResponseBuilder {
@@ -19,7 +18,7 @@ final class ResponseBuilder {
 
     private array $headers = ["Content-Type" => "application/json", "Content-Length" => 0, "Connection" => "close"];
 
-    public function code(int|StatusCode $statusCode): self {
+    public function code(StatusCode|int $statusCode): self {
         $this->statusCode = ($statusCode instanceof StatusCode ? $statusCode->value : $statusCode);
         return $this;
     }
@@ -70,6 +69,6 @@ final class ResponseBuilder {
     }
 
     public function build(): Response {
-        return new Response($this->statusCode, $this->body, $this->customMessage, ThreadSafeArray::fromArray($this->headers));
+        return new Response($this->statusCode, $this->body, $this->customMessage, $this->headers);
     }
 }

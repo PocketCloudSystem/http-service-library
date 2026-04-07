@@ -2,10 +2,11 @@
 
 namespace r3pt1s\httpserver;
 
-use Closure;
-use r3pt1s\httpserver\io\Request;
+use r3pt1s\httpserver\event\def\HttpServerStartedEvent;
+use r3pt1s\httpserver\event\EventDispatcher;
+use r3pt1s\httpserver\io\RequestContext;
 use r3pt1s\httpserver\io\Response;
-use r3pt1s\httpserver\io\ResponseBuilder;
+use r3pt1s\httpserver\io\ResponseCache;
 use r3pt1s\httpserver\route\Path;
 use r3pt1s\httpserver\route\RegularPath;
 use r3pt1s\httpserver\socket\SocketClient;
@@ -13,47 +14,50 @@ use r3pt1s\httpserver\socket\SocketServer;
 use r3pt1s\httpserver\util\ActionFailureReason;
 use r3pt1s\httpserver\util\Address;
 use r3pt1s\httpserver\util\HttpConstants;
-use r3pt1s\httpserver\util\Logger;
+use r3pt1s\httpserver\util\LoggerInterface;
 use r3pt1s\httpserver\util\RateLimiter;
-use r3pt1s\httpserver\util\SingletonTrait;
-use r3pt1s\httpserver\util\StatusCode;
+use r3pt1s\httpserver\util\RequestMethod;
+use r3pt1s\httpserver\util\trait\QuickEventListenersTrait;
+use r3pt1s\httpserver\util\trait\QuickRouteRegistrarsTrait;
 use r3pt1s\httpserver\version\ApiVersion;
+use RuntimeException;
 
 final class HttpServer {
-    use SingletonTrait;
+    use QuickRouteRegistrarsTrait, QuickEventListenersTrait;
+
+    private EventDispatcher $eventDispatcher;
+    private SocketServer $server;
+    private ResponseCache $responseCache;
 
     /** @var array<ApiVersion> */
     private array $versions = [];
     /** @var array<array<Path>> */
     private array $paths = [];
 
-    private SocketServer $server;
-    private Closure $rateLimitResponse;
-
     public function __construct(
         private readonly Address $address,
         private readonly RateLimiter $rateLimiter,
+        private readonly LoggerInterface $logger,
         private readonly bool $enableVersioning,
         private readonly bool $enableResponseCaching,
         private readonly int $cachingTimeInSeconds = 60
     ) {
-        self::setInstance($this);
-        $this->server = new SocketServer($this->address);
-        $this->rateLimitResponse = function (SocketClient $client, Request $request, int $endTimestamp): Response {
-            return ResponseBuilder::create()
-                ->code(StatusCode::TOO_MANY_REQUESTS)
-                ->body(["message" => "You are being rate limited. Please try again in " . ($endTimestamp - time()) . " seconds.", "end_timestamp" => $endTimestamp])
-                ->build();
-        };
+        $this->eventDispatcher = new EventDispatcher();
+        $this->responseCache = new ResponseCache();
+        $this->server = new SocketServer($this);
     }
 
+    /**
+     * @return void
+     * @throws RuntimeException
+     */
     public function start(): void {
         if (!$this->server->create()) {
-            Logger::get()->error("§cFailed to establish http server on address: §e" . $this->address);
+            throw new RuntimeException("Failed to establish http server on address: " . $this->address);
         } else {
-            Logger::get()
-                ->info("Successfully §aestablished §rhttp server on address: §e" . $this->address)
+            $this->logger->info("Successfully established http server on address: %s", $this->address)
                 ->info("Waiting for incoming requests...");
+            $this->eventDispatcher->dispatch(new HttpServerStartedEvent());
             $this->server->listen();
         }
     }
@@ -62,33 +66,22 @@ final class HttpServer {
         $this->server->close();
     }
 
-    public function setRateLimitResponse(Closure $closure): void {
-        $this->rateLimitResponse = $closure;
-    }
-
-    public function registerPath(Path $path): true|ActionFailureReason {
+    public function registerPath(Path $path): ActionFailureReason|true {
         $pathRoute = "/" . trim($path->getPath(), "/");
         if ($path->getApiVersion() !== null && !$this->enableVersioning) {
-            Logger::get()->error("§cYou can't register a path with an ApiVersion when 'enableVersioning' is set to false.");
             return ActionFailureReason::PATH_REGISTER_FAILED_VERSIONING_DISABLED;
         }
 
-        if (!in_array($path->getMethod(), HttpConstants::SUPPORTED_REQUEST_METHODS)) {
-            Logger::get()->error("§cUnable to register path §8'§e" . $path->getPath() . "§8'§c: §eUnknown request method §c" . $path->getMethod());
-            return ActionFailureReason::PATH_REGISTER_FAILED_UNSUPPORTED_REQUEST_METHOD;
-        }
-
         if ($path instanceof RegularPath) {
-            $this->paths[$path->getMethod()][$path->getFullPath()] = $path;
+            $this->paths[$path->getMethod()->name][$path->getFullPath()] = $path;
         } else {
             if (($version = $this->getVersion($path->getApiVersion())) !== null) {
-                if (!$version->isValidPath($path->getMethod(), $pathRoute)) {
-                    $version->addPath($path->getMethod(), $pathRoute);
+                if (!$version->isValidPath($path->getMethod()->name, $pathRoute)) {
+                    $version->addPath($path->getMethod()->name, $pathRoute);
                 }
 
-                $this->paths[$path->getMethod()][$path->getFullPath()] = $path;
+                $this->paths[$path->getMethod()->name][$path->getFullPath()] = $path;
             } else {
-                Logger::get()->warn("Failed to register path §8'§c" . $path->getPath() . "§8'§r: §eNo api with that version found");
                 return ActionFailureReason::PATH_REGISTER_FAILED_API_VERSION_NOT_EXISTENT;
             }
         }
@@ -96,14 +89,12 @@ final class HttpServer {
         return true;
     }
 
-    public function registerVersion(ApiVersion $version): true|ActionFailureReason {
+    public function registerVersion(ApiVersion $version): ActionFailureReason|true {
         if (!$this->enableVersioning) {
-            Logger::get()->error("§cYou can't register an ApiVersion when 'enableVersioning' is set to false.");
             return ActionFailureReason::VERSION_REGISTER_FAILED_VERSIONING_DISABLED;
         }
 
         if (isset($this->versions[$version->getVersion()])) {
-            Logger::get()->warn("Failed to register api with version §8'§e" . $version->getVersion() . "§8'§r: §eAPI version with what version already exists");
             return ActionFailureReason::VERSION_REGISTER_FAILED_VERSION_EXISTS;
         }
 
@@ -111,7 +102,8 @@ final class HttpServer {
         return true;
     }
 
-    public function getVersion(string $versionOrPath, string $method = "GET"): ?ApiVersion {
+    public function getVersion(string $versionOrPath, RequestMethod|string $method = "GET"): ?ApiVersion {
+        $method = $method instanceof RequestMethod ? $method->name : $method;
         if (isset($this->versions[$versionOrPath])) return $this->versions[$versionOrPath];
         if (count($a = array_filter($this->versions, fn(ApiVersion $version) => $version->isValidPath($method, $versionOrPath))) > 0) return current($a);
         return null;
@@ -121,7 +113,8 @@ final class HttpServer {
         return $this->versions;
     }
 
-    public function getPath(string $method, string $path): ?Path {
+    public function getPath(RequestMethod|string $method, string $path): ?Path {
+        $method = $method instanceof RequestMethod ? $method->name : $method;
         return $this->paths[$method][$path] ?? null;
     }
 
@@ -129,12 +122,20 @@ final class HttpServer {
         return $this->paths;
     }
 
+    public function getEventDispatcher(): EventDispatcher {
+        return $this->eventDispatcher;
+    }
+
     public function getServer(): SocketServer {
         return $this->server;
     }
 
-    public function getRateLimitResponse(SocketClient $client, Request $request, int $endTimestamp): Response {
-        return ($this->rateLimitResponse)($client, $request, $endTimestamp);
+    public function getResponseCache(): ResponseCache {
+        return $this->responseCache;
+    }
+
+    public function getRateLimitResponse(SocketClient $client, RequestContext $request, int $endTimestamp): Response {
+        return $this->rateLimiter->prepareResponse($client, $request, $endTimestamp);
     }
 
     public function getAddress(): Address {
@@ -143,6 +144,10 @@ final class HttpServer {
 
     public function getRateLimiter(): RateLimiter {
         return $this->rateLimiter;
+    }
+
+    public function getLogger(): LoggerInterface {
+        return $this->logger;
     }
 
     public function isEnableVersioning(): bool {

@@ -66,7 +66,7 @@ enum StatusCode: int {
     case NOT_EXTENDED = 510;
     case NETWORK_AUTHENTICATION_REQUIRED = 511;
 
-    public static function toString(int $code): string {
+    public static function toString(int $code): ?string {
         return match ($code) {
             100 => "Continue",
             101 => "Switch Protocols",
@@ -129,7 +129,7 @@ enum StatusCode: int {
             509 => "Bandwidth Limit Exceeded",
             510 => "Not Extended",
             511 => "Network Authentication Required",
-            default => "Unknown"
+            default => null
         };
     }
 }

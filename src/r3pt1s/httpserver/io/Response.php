@@ -2,23 +2,21 @@
 
 namespace r3pt1s\httpserver\io;
 
-use pmmp\thread\ThreadSafe;
-use pmmp\thread\ThreadSafeArray;
 use r3pt1s\httpserver\util\StatusCode;
 use r3pt1s\httpserver\util\Utils;
 
-final class Response extends ThreadSafe {
+final readonly class Response {
 
 	public function __construct(
-        private readonly int $statusCode,
-        private readonly string $body,
-        private readonly ?string $customMessage,
-        private readonly ThreadSafeArray $headers
+        private int $statusCode,
+        private string $body,
+        private ?string $customMessage,
+        private array $headers
     ) {}
 
     public function buildResponseString(): string {
-        $httpResponse = "HTTP/1.1 " . $this->statusCode . " " . StatusCode::toString($this->statusCode) . "\r\n";
-        $httpResponse .=  implode("\r\n", Utils::encodeHeaders((array) $this->headers)) . "\r\n";
+        $httpResponse = "HTTP/1.1 " . $this->statusCode . " " . (StatusCode::toString($this->statusCode) ?? $this->customMessage) . "\r\n";
+        $httpResponse .=  implode("\r\n", Utils::encodeHeaders($this->headers)) . "\r\n";
         $httpResponse .= "\r\n";
         $httpResponse .= $this->body;
         return $httpResponse;
@@ -33,7 +31,7 @@ final class Response extends ThreadSafe {
     }
 
     public function getHeaders(): array {
-        return (array) $this->headers;
+        return $this->headers;
     }
 
     public function getStatusCode(): int {

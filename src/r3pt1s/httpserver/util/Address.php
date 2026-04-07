@@ -2,13 +2,11 @@
 
 namespace r3pt1s\httpserver\util;
 
-use pmmp\thread\ThreadSafe;
-
-final class Address extends ThreadSafe {
+final readonly class Address {
 
     public function __construct(
-        private readonly string $address,
-        private readonly int $port
+        private string $address,
+        private int $port
     ) {}
 
     public function getAddress(): string {

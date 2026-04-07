@@ -4,12 +4,13 @@ namespace r3pt1s\httpserver\io;
 
 use r3pt1s\httpserver\route\Path;
 use r3pt1s\httpserver\util\Address;
+use r3pt1s\httpserver\util\RequestMethod;
 
-final readonly class Request {
+final readonly class RequestContext {
 
 	public function __construct(
         private Address $address,
-        private string $method,
+        private RequestMethod $method,
         private Path $path,
         private array $queries,
         private array $headers,
@@ -36,7 +37,7 @@ final readonly class Request {
         return $this->address;
     }
 
-    public function getMethod(): string {
+    public function getMethod(): RequestMethod {
         return $this->method;
     }
 

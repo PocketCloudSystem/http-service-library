@@ -2,12 +2,11 @@
 
 namespace r3pt1s\httpserver\socket;
 
-use pmmp\thread\ThreadSafe;
 use r3pt1s\httpserver\io\Response;
 use r3pt1s\httpserver\util\Address;
 use Socket;
 
-final class SocketClient extends ThreadSafe {
+final class SocketClient {
 
     private const int WRITE_TIMEOUT_SECONDS = 30;
 
@@ -15,11 +14,6 @@ final class SocketClient extends ThreadSafe {
         private readonly Address $address,
         private readonly Socket $socket
     ) {}
-
-    public static function fromSocket(Socket $socket): ?SocketClient {
-        if (!@socket_getpeername($socket, $address, $port)) return null;
-        return new SocketClient(new Address($address, $port), $socket);
-    }
 
     public function respond(Response $response): void {
         $httpResponse = $response->buildResponseString();

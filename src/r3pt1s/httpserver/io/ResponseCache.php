@@ -2,83 +2,55 @@
 
 namespace r3pt1s\httpserver\io;
 
-use pmmp\thread\ThreadSafeArray;
 use r3pt1s\httpserver\HttpServer;
+use r3pt1s\httpserver\util\RequestMethod;
 
 final class ResponseCache {
 
-    private static ?ThreadSafeArray $cache = null;
+    private array $cache = [];
 
-    private static function initCache(): void {
-        if (self::$cache === null) {
-            self::$cache = new ThreadSafeArray();
+    public function tick(HttpServer $server): void {
+        $cachingTime = $server->getCachingTimeInSeconds();
+        $now = time();
+        $keysToRemove = [];
+
+        foreach ($this->cache as $pathString => $data) {
+            [, $time] = $data;
+            if ($now >= ($time + $cachingTime)) {
+                $keysToRemove[] = $pathString;
+            }
+        }
+
+        foreach ($keysToRemove as $key) {
+            unset($this->cache[$key]);
         }
     }
 
-    public static function tick(): void {
-        self::initCache();
-
-        $cachingTime = HttpServer::getInstance()->getCachingTimeInSeconds();
-        $now = time();
-
-        self::$cache->synchronized(function() use ($now, $cachingTime) {
-            $keysToRemove = [];
-
-            foreach (self::$cache as $pathString => $data) {
-                [, $time] = $data;
-
-                if ($now >= ($time + $cachingTime)) {
-                    $keysToRemove[] = $pathString;
-                }
-            }
-
-            foreach ($keysToRemove as $key) {
-                unset(self::$cache[$key]);
-            }
-        });
+    public function cache(HttpServer $server, RequestContext $request, Response $response): void {
+        if (!$server->isEnableResponseCaching()) return;
+        $this->cache[$this->buildCacheKey($request)] = [$response, time()];
     }
 
-    public static function cache(Request $request, Response $response): void {
-        if (!HttpServer::getInstance()->isEnableResponseCaching()) return;
+    public function check(HttpServer $server, RequestContext $request): ?Response {
+        if (!$server->isEnableResponseCaching()) return null;
+        if ($request->getMethod() !== RequestMethod::GET) return null;
+        $cacheKey = $this->buildCacheKey($request);
+        if (!isset($this->cache[$cacheKey])) return null;
+        [$response, $time] = $this->cache[$cacheKey];
 
-        self::initCache();
+        if (time() >= ($time + $server->getCachingTimeInSeconds())) {
+            unset($this->cache[$cacheKey]);
+            return null;
+        }
 
-        $path = $request->getPath();
-        $queries = $request->getQueries(true);
-
-        $apiVersion = $path->getApiVersion() ?? "no-version";
-        $fullPath = $path->getFullPath() . (count($queries) == 0 ? "" : "?" . http_build_query($queries));
-        $cacheKey = $apiVersion . ":" . $path->getMethod() . ":" . $fullPath;
-
-        self::$cache->synchronized(function() use ($cacheKey, $response) {
-            self::$cache[$cacheKey] = serialize([$response, time()]);
-        });
+        return $response;
     }
 
-    public static function check(Request $request): ?Response {
-        if (!HttpServer::getInstance()->isEnableResponseCaching()) return null;
-
-        self::initCache();
-
+    private function buildCacheKey(RequestContext $request): string {
         $path = $request->getPath();
         $queries = $request->getQueries(true);
-
         $apiVersion = $path->getApiVersion() ?? "no-version";
         $fullPath = $path->getFullPath() . (count($queries) == 0 ? "" : "?" . http_build_query($queries));
-        $cacheKey = $apiVersion . ":" . $path->getMethod() . ":" . $fullPath;
-
-        return self::$cache->synchronized(function() use ($cacheKey, $fullPath, $request) {
-            if (!isset(self::$cache[$cacheKey])) return null;
-
-            $entry = unserialize(self::$cache[$cacheKey]);
-            [$response, $time] = $entry;
-
-            if (time() >= ($time + HttpServer::getInstance()->getCachingTimeInSeconds())) {
-                unset(self::$cache[$cacheKey]);
-                return null;
-            }
-
-            return $response;
-        });
+        return $apiVersion . ":" . $path->getMethod()->name . ":" . $fullPath;
     }
 }

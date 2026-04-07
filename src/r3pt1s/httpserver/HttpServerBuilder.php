@@ -3,6 +3,8 @@
 namespace r3pt1s\httpserver;
 
 use r3pt1s\httpserver\util\Address;
+use r3pt1s\httpserver\util\LoggerImpl;
+use r3pt1s\httpserver\util\LoggerInterface;
 use r3pt1s\httpserver\util\RateLimiter;
 
 final class HttpServerBuilder {
@@ -14,32 +16,34 @@ final class HttpServerBuilder {
     public function __construct(
         private Address $address,
         private ?RateLimiter $rateLimiter = null,
+        private ?LoggerInterface $logger = null,
         private bool $enableVersioning = false,
         private bool $enableResponseCaching = false,
         private int $cachingTimeInSeconds = 60
     ) {}
 
-    public function setAddress(Address $address): HttpServerBuilder {
+    public function address(Address $address): HttpServerBuilder {
         $this->address = $address;
         return $this;
     }
 
-    public function setRateLimiter(RateLimiter $rateLimiter): HttpServerBuilder {
+    public function rateLimiter(RateLimiter $rateLimiter): HttpServerBuilder {
         $this->rateLimiter = $rateLimiter;
         return $this;
     }
 
-    public function setEnableVersioning(bool $enableVersioning): HttpServerBuilder {
-        $this->enableVersioning = $enableVersioning;
+    public function logger(LoggerInterface $logger): HttpServerBuilder {
+        $this->logger = $logger;
         return $this;
     }
 
-    public function setEnableResponseCaching(bool $enableResponseCaching): HttpServerBuilder {
-        $this->enableResponseCaching = $enableResponseCaching;
+    public function enableVersioning(bool $enabled): HttpServerBuilder {
+        $this->enableVersioning = $enabled;
         return $this;
     }
 
-    public function setCachingTimeInSeconds(int $cachingTimeInSeconds): HttpServerBuilder {
+    public function configureResponseCaching(bool $enabled, int $cachingTimeInSeconds = 60): HttpServerBuilder {
+        $this->enableResponseCaching = $enabled;
         $this->cachingTimeInSeconds = $cachingTimeInSeconds;
         return $this;
     }
@@ -48,6 +52,7 @@ final class HttpServerBuilder {
         return new HttpServer(
             $this->address,
             $this->rateLimiter ?? RateLimiter::configure(false, 0, 0, 0),
+            $this->logger ?? new LoggerImpl(),
             $this->enableVersioning,
             $this->enableResponseCaching,
             $this->cachingTimeInSeconds

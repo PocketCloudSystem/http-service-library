@@ -2,15 +2,33 @@
 
 namespace r3pt1s\httpserver\util;
 
+use Closure;
+use r3pt1s\httpserver\io\RequestContext;
+use r3pt1s\httpserver\io\Response;
+use r3pt1s\httpserver\io\ResponseBuilder;
+use r3pt1s\httpserver\socket\SocketClient;
+
 final class RateLimiter {
 
     public const int DEFAULT_TIMEOUT = 120;
     public const int DEFAULT_MAX_REQUESTS = 10;
     public const int DEFAULT_TIME_FRAME = 10;
 
+    private static function rateLimitDefaultResponse(SocketClient $client, RequestContext $request, int $endTimestamp): Response {
+        return ResponseBuilder::create()
+            ->code(StatusCode::TOO_MANY_REQUESTS)
+            ->body(["message" => "You are being rate limited. Please try again in " . ($endTimestamp - time()) . " seconds.", "retry_after" => $endTimestamp])
+            ->build();
+    }
 
-    public static function configure(bool $enabled, int $timeout, int $maxRequests, int $timeFrame): self {
-        return new self($enabled, $timeout, $maxRequests, $timeFrame);
+    public static function configure(
+        bool $enabled,
+        int $timeout,
+        int $maxRequests,
+        int $timeFrame,
+        ?Closure $rateLimitResponse = null
+    ): self {
+        return new self($enabled, $timeout, $maxRequests, $timeFrame, $rateLimitResponse ?? self::rateLimitDefaultResponse(...));
     }
 
     private array $requests = [];
@@ -20,11 +38,16 @@ final class RateLimiter {
         private readonly bool $enabled,
         private int $timeout,
         private int $maxRequests,
-        private int $timeFrame
+        private int $timeFrame,
+        private readonly Closure $rateLimitResponse
     ) {
         if ($this->maxRequests < 0) $this->maxRequests = self::DEFAULT_MAX_REQUESTS;
         if ($this->timeout < 0) $this->timeout = self::DEFAULT_TIMEOUT;
         if ($this->timeFrame < 0) $this->timeFrame = self::DEFAULT_TIME_FRAME;
+    }
+
+    public function prepareResponse(SocketClient $client, RequestContext $request, int $endTimestamp): Response {
+        return ($this->rateLimitResponse)($client, $request, $endTimestamp);
     }
 
     public function rateLimit(Address $address, ?int $timeout = null): int {
@@ -32,17 +55,18 @@ final class RateLimiter {
         $timeout = $timeout ?? $this->timeout;
         if ($timeout < 0) $timeout = self::DEFAULT_TIMEOUT;
         $this->rateLimits[$address->getAddress()] = time() + $timeout;
-        Logger::get()->info("Rate limited %s for %s seconds", $address, $timeout);
         return $this->rateLimits[$address->getAddress()];
     }
 
     /**
      * @param Address $address
      * @param int|null $endTimestamp
+     * @param bool|null $justRateLimited
      * @return bool return true means everything is ok and false means address is rate limited
      */
-    public function checkRequest(Address $address, ?int &$endTimestamp = null): bool {
+    public function checkRequest(Address $address, ?int &$endTimestamp = null, ?bool &$justRateLimited = null): bool {
         if (!$this->enabled) return true;
+        $justRateLimited = false;
         if ($this->checkRateLimit($address)) {
             $endTimestamp = $this->rateLimits[$address->getAddress()];
             return false;
@@ -56,6 +80,7 @@ final class RateLimiter {
 
         $this->requests[$address->getAddress()]["count"] = $this->requests[$address->getAddress()]["count"] + 1;
         if ($this->requests[$address->getAddress()]["count"] > $this->maxRequests) {
+            $justRateLimited = true;
             $endTimestamp = $this->rateLimit($address);
             return false;
         }
