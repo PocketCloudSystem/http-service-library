@@ -18,7 +18,7 @@ final readonly class Address {
     }
 
     public function __toString(): string {
-        return "/" . $this->address . ":" . $this->port;
+        return $this->address . ":" . $this->port;
     }
 
     public static function create(string $address, int $port): self {

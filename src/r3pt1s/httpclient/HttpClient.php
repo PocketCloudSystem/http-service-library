@@ -47,6 +47,12 @@ final class HttpClient {
         return $this;
     }
 
+    /**
+     * Executes multiple contexts at the same time.
+     * This method does not check for beforeActions, afterActions and retries.
+     * @param ClientRequestContext ...$contexts
+     * @return array
+     */
     public function multi(ClientRequestContext ...$contexts): array {
         $multiHandle = curl_multi_init();
         $handles = [];
@@ -120,7 +126,7 @@ final class HttpClient {
 
         $basePath = $this->basePath !== null ? trim($this->basePath, "/") . "/" : "";
         $path = trim($path, "/");
-        $finalUrl = "http:/" . $this->address . "/" . $basePath . $path;
+        $finalUrl = "http://" . $this->address . "/" . $basePath . $path;
 
         $finalHeaders = array_merge($this->defaultHeaders, $headers);
         return new ClientRequestContext($finalUrl, $method, $finalHeaders, $queries, $body, $this->timeout, $this->retries);

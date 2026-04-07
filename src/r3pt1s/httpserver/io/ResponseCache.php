@@ -10,7 +10,7 @@ final class ResponseCache {
     private array $cache = [];
 
     public function tick(HttpServer $server): void {
-        $cachingTime = $server->cachignTimeInSeconds();
+        $cachingTime = $server->cachingTimeInSeconds();
         $now = time();
         $keysToRemove = [];
 
@@ -38,7 +38,7 @@ final class ResponseCache {
         if (!isset($this->cache[$cacheKey])) return null;
         [$response, $time] = $this->cache[$cacheKey];
 
-        if (time() >= ($time + $server->cachignTimeInSeconds())) {
+        if (time() >= ($time + $server->cachingTimeInSeconds())) {
             unset($this->cache[$cacheKey]);
             return null;
         }

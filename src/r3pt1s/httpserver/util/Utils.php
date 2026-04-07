@@ -78,12 +78,14 @@ final class Utils {
             }
         }
 
-        $parsedBody = $body;
+        $parsedBody = $body !== "" ? $body : null;
         $contentType = $headers["Content-Type"] ?? "";
-        if (str_contains($contentType, "application/json")) {
-            $parsedBody = json_decode($body, true) ?? $body;
-        } elseif (str_contains($contentType, "application/x-www-form-urlencoded")) {
-            parse_str($body, $parsedBody);
+        if ($parsedBody !== null) {
+            if (str_contains($contentType, "application/json")) {
+                $parsedBody = json_decode($body, true) ?? $body;
+            } elseif (str_contains($contentType, "application/x-www-form-urlencoded")) {
+                parse_str($body, $parsedBody);
+            }
         }
 
         $path = $server->getPath($method, $path);

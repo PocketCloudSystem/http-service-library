@@ -275,7 +275,7 @@ final class SocketServer {
                 $client->respond($path->handleFailedAuth($request)->build());
             }
         } catch (Throwable $exception) {
-            $this->server->logger()->error("Unexpected error has occurred while processing request from %s (%s)", $client->getAddress(), $request?->getPath()->getFullPath() ?? "Request not parsed yet");
+            $this->server->logger()->error("Unexpected error has occurred while processing request from %s (%s)", $client->getAddress(), $request?->path()->fullPath() ?? "Request not parsed yet");
             $this->server->logger()->exception($exception);
             $this->server->eventDispatcher()->dispatch(new RequestErrorEvent(
                 $client,

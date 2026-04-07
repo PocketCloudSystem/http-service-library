@@ -207,7 +207,7 @@ final class HttpServer {
         return $this->enableResponseCaching;
     }
 
-    public function cachignTimeInSeconds(): int {
+    public function cachingTimeInSeconds(): int {
         return $this->cachingTimeInSeconds;
     }
 }
