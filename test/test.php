@@ -21,19 +21,17 @@ $httpServer = HttpServerBuilder::create(Address::create("127.0.0.1", 8081))
     ->build();
 
 $httpServer->registerVersion(new ApiVersion("v1", new NoAuthAuthentication()));
-$httpServer->get("/me", function (RequestContext $request): Response {
+$httpServer->get("/me", function (RequestContext $request): ResponseBuilder {
     return ResponseBuilder::create()
         ->code(200)
-        ->body(["message" => "hi"])
-        ->build();
+        ->body(["message" => "hi"]);
 }, version: "v1");
 
-$httpServer->post("/post", function (RequestContext $request): Response {
-    var_dump($request->getBody());
+$httpServer->post("/post", function (RequestContext $request): ResponseBuilder {
+    var_dump($request->body());
     return ResponseBuilder::create()
         ->code(200)
-        ->body(["message" => "posted"])
-        ->build();
+        ->body(["message" => "posted"]);
 }, version: "v1");
 
 $httpServer->listen(HttpServerStartedEvent::class, function (HttpServerStartedEvent $event): void {
